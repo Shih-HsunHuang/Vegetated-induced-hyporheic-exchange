@@ -1,9 +1,11 @@
 # Vegetated-induced-hyporheic-exchange
 This program deals with the data taken from the vegetation-induced hyporheic exchange experiment conducted in Ecoflume of St. Anthony Falls Laboratory on 2021.
 
+The experiment data can be found at: https://doi.org/10.13020/W282-JJ11
+
 Use Get_washout_curves.m to get the washout curves from the photos.
 
-Use Fitting_curves.m to fit the washout curves with 1D diffusion model and get the fitted mixing coefficient D_SWI.
+Use Fitting_curves.m to fit the washout curves with the model and get the effective hyporheic exchange velocity V_H.
 
 Author information
   Lead author:

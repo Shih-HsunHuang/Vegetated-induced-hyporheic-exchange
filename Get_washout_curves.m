@@ -2,14 +2,15 @@
     This program deals with the images taken from the vegetation-induced 
     hyporheic exchange experiment conducted in Ecoflume of St. Anthony Falls Laboratory on 2021.
 
-    The pictures are the top view of the flume. After the fluorescent dye
+    The pictures were taken by a downward-looking camera above the flume. After the fluorescent dye
     was injected into the sediment, the flow was started and the pictures were
-    taken in an interval of 5 minutes for about 16 hours.
+    taken at 5-minute interval for about 16.6 hours.
 
     In each picture, there are dowels, meshes and sediment with dye. The goal of
-    this program is to get the averaged image intensity of the sediment with dye varies with time. 
+    this program is to get the pixels related to the sediment with dye at difference time. 
 
-    Final reivse date: 2021/11/17
+    The experiment data can be found at: https://doi.org/10.13020/W282-JJ11
+    Last revision: 2022/03/25
 
     Lead author:
 	Name: Shih-Hsun Huang
@@ -28,10 +29,10 @@
 %}
 %% Start of the program
 % Move the floder and take the information of files
-% cd 'Test run' % move floder
-file_name = dir('*1024*.tiff');
+% cd '' % move floder
+file_name = dir('*0919*.tiff');
 %%
-file_length = 4; % Total number of processed photos
+file_length = 4; % Total number of photos
 
 rect_center = [565   397   332   258]; % Define the interested area
 
@@ -53,16 +54,16 @@ P0_center_double = im2double(P0_center(:,:,2))*255;
 P0_center_double_line = P0_center_double(:);
 
 P0_filtered = P0_center;
-P0_filtered(P0_filtered==255) = 0;
+P0_filtered(P0_filtered == 255) = 0;
 
 figure
 imagesc(P0_filtered(:,:,2))
 colorbar
 caxis([0 250])
 %%
-%_ Step 1. Build up the mask to block the pixels of dowels 
+%_ Step 1. Build up the mask to block the pixels on dowels 
 
-i = 13; % The index to show the location of particular mask 
+i = 30; % The index to show the location of particular mask 
 
 Dowel_locations = [
 9	24.5915 % 1
@@ -94,7 +95,7 @@ Dowel_locations = [
 92.8666 147.5030 % 27
 136.1226 134.5624 % 28
 183.2810 138.4694
-234.0007 138.8366% 30
+232.7847 132.3515% 30
 275.7587 146.5258 % 31
 320.1754 148.5129 % 32
 26.8453 193.4106 % 33
@@ -256,16 +257,17 @@ set(gcf,'PaperUnits','inches')
 set(gcf,'PaperSize',[8 6])
 set(gcf,'PaperPosition',[0 0 8 6])
 box on
-
 %% Step 2. Find the washout curve
 cut_mu_std = zeros(length(1:file_length),2);
+t_mu_std_p_sp_auto = zeros(length(1:file_length),5); % Mean washout curves
 
-t_mu_std_p_sp_auto = zeros(length(1:file_length),5); % Washout curves
+pixel_gs = zeros(size(P0_center,1),size(P0_center,2),length((1:file_length))); % filtered pixels
+pixel_masks = true(size(P0_center,1),size(P0_center,2),length((1:file_length))); % mask
 %%
 if_check = 0; % (0 or 1) Check the results to filter out the pixels of mesh
 if_see_pdf = 0; % (0 or 1) Check the pdfs used to classify to filter out the pixels of mesh
 
-pixel_propotion = 40; % The % of sediment with dye in whole pictures
+pixel_propotion = 40; % The percentage of sediment with dye in whole pictures
 % Parameters to shift the pdf
 addmu = 8;% 
 timestd = 0.8; % 
@@ -348,6 +350,12 @@ end
 count = count + 1;
 
 end % while end
+
+pixel_gs(:,:,i) = P_double_filtered;
+temp_mask = true(size(P_double_filtered));
+temp_mask(P_double_filtered == 0) = 0;
+pixel_masks(:,:,i) = temp_mask;
+
 cut_mu_std(i,1:2) = [c d];
 t_mu_std_p_sp_auto(i,1) = (file_name(i).datenum - file_name(1).datenum)*24*60; % minutes
 t_mu_std_p_sp_auto(i,2:4) = [P_in_mu P_in_std length(find(P_double_filtered_line>0))/length(P_double_filtered_line)];
@@ -441,5 +449,27 @@ set(gcf,'PaperSize',[8 6])
 set(gcf,'PaperPosition',[0 0 8 6])
 %% Save the results
 %{
- save('Oct19_LSWO_SV_V550_2_washout_curve.mat','t_mu_std_p_sp_auto','cut_mu_std')
+cd '' % The floder where results are saved
+save('Test_curves.mat','t_mu_std_p_sp_auto','pixel_gs','pixel_masks')
 %}
+%% Check the last filtered data point
+imAlpha=ones(size(pixel_gs(:,:,file_length)));
+imAlpha(pixel_masks(:,:,file_length) == 0) = 0;
+
+figure
+imagesc(pixel_gs(:,:,file_length),'AlphaData',imAlpha)
+hold on
+
+set(gca,'color',0*[1 1 1]);
+xlabel('Pixels')
+ylabel('Pixels')
+cb = colorbar;
+caxis([0 255])
+ylabel(cb, 'Green channel', 'FontName', 'Times New Roman')
+set(gca, 'FontName', 'Times New Roman')
+set(gca,'fontsize',14,'linewidth',1)%,'fontweight','bold');
+set(gcf,'PaperPositionMode','Manual')
+set(gcf,'PaperUnits','inches')
+set(gcf,'PaperSize',[8 6])
+set(gcf,'PaperPosition',[0 0 8 6])
+box on

@@ -1,8 +1,11 @@
 %{
-    This program uses a 1D diffusion model to fit the washout curves gain from the vegetation-induced 
-    hyporheic exchange experiment conducted in Ecoflume of St. Anthony Falls Laboratory on 2021.
+    This program uses a pair of first order equations to fit the washout 
+    curves gained from the vegetation-induced  hyporheic exchange experiment 
+    conducted in Ecoflume of St. Anthony Falls Laboratory on 2021.
 
-    Final reivse date: 2021/11/17
+    The experiment data can be found at: https://doi.org/10.13020/W282-JJ11
+
+    last revision: 2021/03/25
 
     Lead author:
 	Name: Shih-Hsun Huang
@@ -20,90 +23,73 @@
 	ORCID: https://orcid.org/0000-0001-6272-1266
 %}
 %% Step 1. Load washout curves
-load('Oct19_LSWO_SV_V560_1_washout_curve.mat')
-curve_SV_V560_1 = t_mu_std_p_sp_auto;
+load('DV_V595_2.mat')
 
+% Divided analysis to 4 subregions
+curves = zeros(size(pixel_gs,3), 4);
+t = t_mu_std_p_sp_auto(:,1);
+for i = 1:size(pixel_gs,3)
+    temp_p = pixel_gs(1:129,1:166,i);
+    temp_p(temp_p == 0) = NaN;
+    curves(i,1) = mean(temp_p,'all','omitnan');
+    
+    temp_p = pixel_gs(1:129,167:333,i);
+    temp_p(temp_p == 0) = NaN;
+    curves(i,2) = mean(temp_p,'all','omitnan');
+    
+    temp_p = pixel_gs(130:259,1:166,i);
+    temp_p(temp_p == 0) = NaN;
+    curves(i,3) = mean(temp_p,'all','omitnan');
+    
+    temp_p = pixel_gs(130:259,167:333,i);
+    temp_p(temp_p == 0) = NaN;
+    curves(i,4) = mean(temp_p,'all','omitnan');
+end
+%%
 % Plot washour curves
 figure
-plot(curve_SV_V560_1(:,1)/60,curve_SV_V560_1(:,2),'kx','linewidth',1.5)
+hold on
+plot(t/60,curves(:,1),'x','linewidth',1)
+plot(t/60,curves(:,2),'o','linewidth',1)
+plot(t/60,curves(:,3),'^','linewidth',1)
+plot(t/60,curves(:,4),'s','linewidth',1)
+
 xlabel('Time (hours)')
 ylabel('Image intensity')
-axis([0 20 0 120])
+axis([0 20 0 90])
 set(gca, 'FontName', 'Times New Roman')
-set(gca,'fontsize',12,'linewidth',1)%,'fontweight','bold');
+set(gca,'fontsize',12,'linewidth',1)
 set(gcf,'PaperPositionMode','Manual')
 set(gcf,'PaperUnits','inches')
 set(gcf,'PaperSize',[8 6])
 set(gcf,'PaperPosition',[0 0 8 6])
 box on
 %% Setup parameters
-Dlth = 3.25e-11; % (m^2/s) Initial guass of the mixing coefficient 
-Based_level0 = 48; % Initial guass on the background intensity
-Start_step = 3; % The first involved data points
+VH_0 = 3.25e-6; % (m^2/s) Initial guass of the coefficient 
+Based_level0 = 35; % Initial guass of the background image intensity
 
-AC_curve = curve_SV_V560_1(:,1:2); 
-V = 1.2268e+03; % mL (g) amount of injected dye
-A = 43*44*0.99; % cm2 injection area
-Slop = 0; % Consider the decay of fluorescent dye
+Start_step_0 = 4; % The first involved data for whole region
 
-%% Fit the washout curves by 1D model
-D_fit_Based_line = fminsearch(@(D0_B)washout_fit_fun(AC_curve,Start_step,V,A,D0_B),[Dlth,Based_level0]);
+% Assign the fitting interval
+Start_step = 11; % The start of model fit
+End_step = 27; % The end of model fit
 
-Based_level = D_fit_Based_line(2);
-D_fit = D_fit_Based_line(1);
+V = 1195.8; % mL (g) amount of injected dye
+A = 43*44*0.95; % cm2 injection area *0.95 for DV
+%% ___Fit the washout curves ___
+%% Fit the washout curves gained from the 4 subregions of analyzed region
+D_fit_all = zeros(4,4); % Include all the data [V_H Background_intensity RMSE R2]
+D_fit_part = zeros(4,4); % Fit the model to the data within the fitting interval [V_H Background_intensity RMSE R2]
+for i = 1:4
+% Fit background intensity
+AC_curve = [t,curves(:,i)];
+D_fit_all(i,1:2) = fminsearch(@(D0_B)washout_fit_part_fun(AC_curve,Start_step_0,V,A,length(AC_curve),D0_B),[VH_0,Based_level0]);
+[D_fit_all(i,3), D_fit_all(i,4), ~, ~] = washout_fit_plot_fun(AC_curve,Start_step_0,V,A,length(AC_curve),D_fit_all(i,1:2));
 
-AC_curve_new = AC_curve;
-decay_amount = (AC_curve(1:end,1)-AC_curve(1,1))*Slop;
-AC_curve_new(:,2) = AC_curve(:,2)-decay_amount; % C (mg/L)
+% Fit V_H
+AC_curve = [t,curves(:,i)];
+D_fit_part(i,1) = fminsearch(@(D0)washout_fit_part_fun(AC_curve,Start_step,V,A,End_step,[D0,D_fit_all(i,2)]),VH_0);
+D_fit_part(i,2) = D_fit_all(i,2);
 
-t_sample = AC_curve_new(:,1);
-
-%% Analysis the results (1D diffusion model)
-% Parameters of model
-V_injection_region = V/1000000; % (m^3) test section with dye
-V_flume = 2829.74/1000; % (m^3) the volume of other parts (not including remaininng of the test section
-Alth = A/10000; % (m^2) the injection area
-
-dlth = 0.56/1000; % (m) the diffusion length scale (sediment diameter)
-klth = D_fit/dlth; % (m/s) the mixing coefficient (D_SWI) between surface water and subsurface water
-
-% Parameter of numerical schieme
-delt = 5; % (s) time step
-t = 0:delt:(t_sample(end)*60+60); % (s) simulation time
-
-C_bed = zeros(length(t),1); % (mg/L) concentration of dye in the sediment bed (subsurface).
-C_flume = zeros(length(t),1); % (mg/L) concentration of dye in the surface water.
-
-C_bed(1,1) = AC_curve_new(Start_step,2)-Based_level;
-for i = 1:length(t)-1
-    C_bed(i+1) = C_bed(i) - (klth*Alth/V_injection_region)*(C_bed(i)-C_flume(i))*delt; ... 
-    C_flume(i+1) = C_flume(i) - (klth*Alth/V_flume)*(C_flume(i)-C_bed(i))*delt;
+[D_fit_part(i,3), D_fit_part(i,4), ~, ~] = washout_fit_plot_fun(AC_curve,Start_step,V,A,End_step,D_fit_part(i,1:2));
 end
-
-%% Results
-% Interpolate the simulated data and check the fitting results
-inter_fit = interp1((t/60+AC_curve_new(Start_step,1))/60,C_bed,AC_curve_new(Start_step:end,1)/60);
-RMSE = sqrt((mean((inter_fit - (AC_curve_new(Start_step:end,2) - Based_level)).^2)))
-R2 = 1 - sum((inter_fit - (AC_curve_new(Start_step:end,2) - Based_level)).^2)/(length(AC_curve_new(Start_step:end,2))-1)/var(AC_curve_new(Start_step:end,2))
-
-figure
-hold on
-plot(AC_curve_new(:,1)/60,AC_curve_new(:,2)-Based_level,'kx','linewidth',1.5)
-plot((t/60+AC_curve_new(Start_step,1))/60,C_bed,'k-','linewidth',1)
-plot(AC_curve_new(Start_step,1)/60,AC_curve_new(Start_step,2)-Based_level,'ok','linewidth',2)
-
-text(2, 80, ['RMSE = ',sprintf('%.2f',RMSE)])
-
-legend('Original curve (Shifted)','Diffusion equation','Point start fitting')
-xlabel('Time (hours)')
-ylabel('Image intensity')
-title(['D_{fit} = ',sprintf('%.2e',D_fit),'(m^2/s)',', Slop: ',sprintf('%.2e',Slop),', Baseline: ',sprintf('%.0f',Based_level)])
-
-axis([-0.2 12 -5 120])
-set(gca, 'FontName', 'Times New Roman')
-set(gca,'fontsize',12,'linewidth',1)%,'fontweight','bold');
-set(gcf,'PaperPositionMode','Manual')
-set(gcf,'PaperUnits','inches')
-set(gcf,'PaperSize',[8 6])
-set(gcf,'PaperPosition',[0 0 8 6])
-box on
